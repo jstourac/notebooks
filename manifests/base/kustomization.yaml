@@ -200,7 +200,7 @@ vars:
       apiVersion: v1
     fieldref:
       fieldpath: data.odh-pytorch-gpu-notebook-image-commit-n
-  - name: odh-pytorch-gpu-notebook-image-commit-n-1
+  - name: odh-pytorch-gpu-notebook-image-n-1
     objref:
       kind: ConfigMap
       name: notebook
