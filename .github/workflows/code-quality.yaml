@@ -123,16 +123,51 @@ jobs:
         id: kustomize-manifests
         run: |
           KUSTOMIZE_VERSION=5.0.2
-          wget "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
-          tar -xvf kustomize*
+          echo "---------------------------------------------------------------------------------"
+          echo "Download kustomize '${KUSTOMIZE_VERSION}'"
+          echo "---------------------------------------------------------------------------------"
+          wget --output-document=kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          tar -xvf kustomize.tar.gz
 
           ./kustomize version
-          echo "----------------------------------------------------------"
-          echo "Starting './kustomize build manifests/base'"
-          echo "----------------------------------------------------------"
-          ./kustomize build manifests/base
 
-          echo "----------------------------------------------------------"
-          echo "Starting './kustomize build manifests/overlays/additional'"
-          echo "----------------------------------------------------------"
-          ./kustomize build manifests/overlays/additional
+          echo "---------------------------------------------------------------------------------"
+          echo "Starting to run kustomize '${KUSTOMIZE_VERSION}' for each kustomization.yaml file"
+          echo "---------------------------------------------------------------------------------"
+          find . -name "kustomization.yaml" | xargs dirname | xargs -t -I {} ./kustomize build {} >/tmp/kustomize-stdout.yaml 2>/tmp/kustomize-stderr.txt
+
+          echo "Let's print the STDERR:"
+          cat /tmp/kustomize-stderr.txt
+
+          # --------------------------------------------------------------------------------------
+
+          KUSTOMIZE_VERSION=5.4.3
+          echo "---------------------------------------------------------------------------------"
+          echo "Download kustomize '${KUSTOMIZE_VERSION}'"
+          echo "---------------------------------------------------------------------------------"
+          wget --output-document=kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          tar -xvf kustomize.tar.gz
+
+          ./kustomize version
+
+          echo "---------------------------------------------------------------------------------"
+          echo "Starting to run kustomize '${KUSTOMIZE_VERSION}' for each kustomization.yaml file"
+          echo "---------------------------------------------------------------------------------"
+          find . -name "kustomization.yaml" | xargs dirname | xargs -t -I {} ./kustomize build {} >/tmp/kustomize-stdout-2.yaml 2>/tmp/kustomize-stderr-2.txt
+
+          echo "Let's print the STDERR:"
+          cat /tmp/kustomize-stderr-2.txt
+
+          echo "---------------------------------------------------------------------------------"
+          echo "Checking the generated outputs - should be identical"
+          echo "---------------------------------------------------------------------------------"
+          diff -u /tmp/kustomize-stdout.yaml /tmp/kustomize-stdout-2.yaml
+
+          echo "---------------------------------------------------------------------------------"
+          echo "No log in STDERR should be printed"
+          echo "---------------------------------------------------------------------------------"
+          if [ -s /tmp/kustomize-stderr.txt ] || [ -s /tmp/kustomize-stderr-2.txt ]; then
+              echo "There were some warnings generated during the kustomize build. Please check the log above!"
+              exit 1
+          fi
+          
