@@ -235,12 +235,25 @@ class TestBaseImage:
             directories_to_check.append([f"{app_root_path}/share", "775", expected_gid, expected_uid])
 
         def test_fn(container: testcontainers.core.container.DockerContainer):
+            # First let's check the permissions of the selected paths
             for item in directories_to_check:
                 with subtests.test(f"Checking permissions of the: {item[0]}"):
                     _, output = container.exec(["stat", "--format='%a:%g:%u'", f"{item[0]}"])
                     logging.debug(output.decode())
                     cleaned_output = output.decode().strip().strip("'")
                     assert cleaned_output == f"{item[1]}:{item[2]}:{item[3]}"
+
+            # Now, let's check the ownership of the files in the whole interested directory tree
+            import os
+
+            check_ownership_filename = "check_ownerships.py"
+            resources_dir = os.path.dirname(os.path.abspath(__file__)) + "/../resources"
+            docker_utils.container_cp(container.get_wrapped_container(), src=str(f"{resources_dir}/{check_ownership_filename}"),
+                                        dst="/tmp")
+            with subtests.test(f"Check of the ownership for the path tree"):
+                ecode, output = container.exec(["python3", f"/tmp/{check_ownership_filename}", app_root_path, expected_uid, expected_gid])
+                logging.debug(output.decode())
+                assert ecode == 0
 
         self._run_test(image=image, test_fn=test_fn)
 
