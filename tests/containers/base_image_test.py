@@ -37,16 +37,16 @@ class TestBaseImage:
             test_fn(container)
             return
         except Exception as e:
-            pytest.fail(f"Unexpected exception in test: {e}")        
+            pytest.fail(f"Unexpected exception in test: {e}")
         finally:
             docker_utils.NotebookContainer(container).stop(timeout=0)
 
         # If the return doesn't happen in the try block, fail the test
         pytest.fail("The test did not pass as expected.")
-    
+
 
     def test_elf_files_can_link_runtime_libs(self, subtests: pytest_subtests.SubTests, image):
-        
+
         def test_fn(container: DockerContainer):
             def check_elf_file():
                 """This python function will be executed on the image itself.
@@ -123,7 +123,7 @@ class TestBaseImage:
                         continue  # it's in ../
 
                     with subtests.test(f"{dlib=}"):
-                        pytest.fail(f"{dlib=} has unsatisfied dependencies {deps=}")                
+                        pytest.fail(f"{dlib=} has unsatisfied dependencies {deps=}")
 
         self._run_test(image=image, test_fn=test_fn)
 
@@ -145,7 +145,7 @@ class TestBaseImage:
             logging.debug(output.decode())
             assert ecode == 0
 
-        self._run_test(image=image, test_fn=test_fn)        
+        self._run_test(image=image, test_fn=test_fn)
 
     def test_pip_install_cowsay_runs(self, image: str):
         """Checks that the Python virtualenv in the image is writable."""
@@ -218,6 +218,81 @@ class TestBaseImage:
                     assert ecode == 0, output.decode()
             finally:
                 docker_utils.NotebookContainer(container).stop(timeout=0)
+
+    def test_file_permissions(self, image: str, subtests: pytest_subtests.SubTests):
+        """Checks the permissions and ownership for some selected files/directories."""
+
+        # Originally in ODS-CI we tested only /opt/app-root/[lib|share] dirs.
+        directory_to_check = "/opt/app-root/share"
+        # directories_to_check = [
+        #         ["/opt/app-root/lib", "0775", "0", "1001"],
+        #         ["/opt/app-root/share", "0775", "0", "1001"],
+        #         # TODO
+        #     ]
+
+
+# (app-root) ls -l
+# total 8
+# drwxrwxr-x. 1 default root 1114 Nov 28 19:29 bin
+# drwxrwxr-x. 1 default root   14 Nov 28 19:25 etc
+# drwxrwxr-x. 1 default root   20 Nov 15 02:54 include
+# drwxrwxr-x. 1 default root   20 Nov 15 02:54 lib
+# lrwxrwxrwx. 1 default root    3 Nov 15 02:54 lib64 -> lib
+# -rw-rw-r--. 1 default root  155 Nov 15 02:54 pyvenv.cfg
+# drwxrwxr-x. 1 default root   32 Nov 28 19:24 requirements.txt
+# drwxrwxr-x. 1 default root   20 Nov 28 19:21 share
+# drwxrwxr-x. 1 default root    8 Nov 14 10:43 src
+# (app-root) id default
+# uid=1001(default) gid=0(root) groups=0(root)
+# (app-root) id root
+# uid=0(root) gid=0(root) groups=0(root)
+# (app-root) cat /etc/passwd
+# root:x:0:0:root:/root:/bin/bash
+# bin:x:1:1:bin:/bin:/sbin/nologin
+# daemon:x:2:2:daemon:/sbin:/sbin/nologin
+# adm:x:3:4:adm:/var/adm:/sbin/nologin
+# lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+# sync:x:5:0:sync:/sbin:/bin/sync
+# shutdown:x:6:0:shutdown:/sbin:/sbin/shutdown
+# halt:x:7:0:halt:/sbin:/sbin/halt
+# mail:x:8:12:mail:/var/spool/mail:/sbin/nologin
+# operator:x:11:0:operator:/root:/sbin/nologin
+# games:x:12:100:games:/usr/games:/sbin/nologin
+# ftp:x:14:50:FTP User:/var/ftp:/sbin/nologin
+# nobody:x:65534:65534:Kernel Overflow User:/:/sbin/nologin
+# systemd-coredump:x:999:997:systemd Core Dumper:/:/sbin/nologin
+# dbus:x:81:81:System message bus:/:/sbin/nologin
+# tss:x:59:59:Account used for TPM access:/:/usr/sbin/nologin
+# default:x:1001:0:Default Application User:/opt/app-root/src:/bin/bash
+# apache:x:48:48:Apache:/usr/share/httpd:/sbin/nologin
+# saslauth:x:998:76:Saslauthd user:/run/saslauthd:/sbin/nologin
+
+
+    # ...    Run Cell And Check Output
+    # ...    !stat ${path} | grep Access | awk '{split($2,b,"."); printf "%s", b[1]}' | awk '{split($0, c, "/"); printf c[1]}' | cut -c 2-5
+    # ...    ${permission}[0]
+    # Run Keyword And Continue On Failure
+    # ...    Run Cell And Check Output
+    # ...    !stat ${path} | grep Uid | awk '{split($9,b,"."); printf "%s", b[1]}' | awk '{split($0, c, "/"); printf c[1]}'
+    # ...    ${permission}[1]
+    # Run Keyword And Continue On Failure
+    # ...    Run Cell And Check Output
+    # ...    !stat ${path} | grep Gid | awk '{split($5,b,"."); printf "%s", b[1]}' | awk '{split($0, c, "/"); printf c[1]}'
+    # ...    ${permission}[2]
+
+        import os
+
+        def test_fn(container: DockerContainer):
+            check_ownership_filename = "check_ownerships.py"
+            resources_dir = os.path.dirname(os.path.abspath(__file__)) + "/../resources"
+            docker_utils.container_cp(container.get_wrapped_container(), src=str(f"{resources_dir}/{check_ownership_filename}"),
+                                        dst="/tmp")
+
+            ecode, output = container.exec(["python3", f"/tmp/{check_ownership_filename}", directory_to_check])
+            logging.debug(output.decode())
+            assert ecode == 0
+
+        self._run_test(image=image, test_fn=test_fn)
 
 def encode_python_function_execution_command_interpreter(python: str, function: Callable[..., Any], *args: list[Any]) -> list[str]:
     """Returns a cli command that will run the given Python function encoded inline.
