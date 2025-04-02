@@ -63,10 +63,12 @@ RUN yum install -y yum-utils && \
 ENV LIBLOC=/usr/lib64/R/library
 ENV R_LIBS_USER=/opt/app-root/bin/Rpackages/4.4
 
-RUN chmod -R a+w ${LIBLOC} && \
+RUN chmod -R a+w ${LIBLOC}
     # create User R Library path
-    mkdir -p ${R_LIBS_USER} && \
+USER 1001
+RUN mkdir -p ${R_LIBS_USER} && \
     chmod -R a+w ${R_LIBS_USER}
+USER 0
 
 WORKDIR /tmp/
 
@@ -87,11 +89,15 @@ RUN wget --progress=dot:giga https://download2.rstudio.org/server/rhel8/x86_64/$
 
 COPY ${RSTUDIO_SOURCE_CODE}/rsession.conf /etc/rstudio/rsession.conf
 
+USER 1001
+
 # Install R packages
 # https://cran.r-project.org/web/packages
-COPY ${RSTUDIO_SOURCE_CODE}/install_packages.R ./
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/install_packages.R ./
 RUN R -f ./install_packages.R && \
     rm ./install_packages.R
+
+USER 0
 
 # Install NGINX to proxy RStudio and pass probes check
 ENV NGINX_VERSION=1.24 \
@@ -146,18 +152,19 @@ RUN sed -i -f ${NGINX_APP_ROOT}/nginxconf.sed ${NGINX_CONF_PATH} && \
     rpm-file-permissions
 
 # Configure nginx
-COPY ${RSTUDIO_SOURCE_CODE}/nginx/serverconf/ /opt/app-root/etc/nginx.default.d/
-COPY ${RSTUDIO_SOURCE_CODE}/nginx/httpconf/ /opt/app-root/etc/nginx.d/
-COPY ${RSTUDIO_SOURCE_CODE}/nginx/api/ /opt/app-root/api/
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/nginx/serverconf/ /opt/app-root/etc/nginx.default.d/
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/nginx/httpconf/ /opt/app-root/etc/nginx.d/
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/nginx/api/ /opt/app-root/api/
 
 # Launcher
 WORKDIR /opt/app-root/bin
 
-COPY ${RSTUDIO_SOURCE_CODE}/utils utils/
-COPY ${RSTUDIO_SOURCE_CODE}/run-rstudio.sh ${RSTUDIO_SOURCE_CODE}/setup_rstudio.py ${RSTUDIO_SOURCE_CODE}/rsession.sh ${RSTUDIO_SOURCE_CODE}/run-nginx.sh ./
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/utils utils/
+COPY --chown=1001:0 ${RSTUDIO_SOURCE_CODE}/run-rstudio.sh ${RSTUDIO_SOURCE_CODE}/setup_rstudio.py ${RSTUDIO_SOURCE_CODE}/rsession.sh ${RSTUDIO_SOURCE_CODE}/run-nginx.sh ./
 
 USER 1001
 
+# TODO - Failed to write lockfile to container image: [Errno 13] Permission denied: 'Pipfile.lock'
 COPY ${RSTUDIO_SOURCE_CODE}/Pipfile.lock ./
 
 RUN echo "Installing softwares and packages" && \
